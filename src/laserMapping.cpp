@@ -449,11 +449,16 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::UniquePtr &msg) {
         deque<PointCloudXYZI::Ptr> ptr;
         deque<double> timestamp_lidar;
         p_pre->process_cut_frame_pcl2(msg, ptr, timestamp_lidar, cut_frame_num, scan_count);
+
         while (!ptr.empty() && !timestamp_lidar.empty()) {
+
             lidar_buffer.push_back(ptr.front());
+
             ptr.pop_front();
             time_buffer.push_back(timestamp_lidar.front() / double(1000));  //unit:s
+
             timestamp_lidar.pop_front();
+
         }
     } 
     else {
@@ -464,15 +469,19 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::UniquePtr &msg) {
         time_buffer.push_back(get_time_sec(msg->header.stamp));
     }
 
+
     // Ground Segmentation TODO : other lidar type
     if (lidar_type == VELO || lidar_type == VELO_NCLT || lidar_type == OUSTER || lidar_type == PANDAR || lidar_type == VELO_without_Time) {
         pcl::fromROSMsg(*msg, curr_points);
 
         PatchworkppGroundSeg->estimate_ground(curr_points, ground_points, non_ground_points, time_taken);
-
+        if (ground_points.empty()) {
+            std::cerr << "[ERROR] Ground segmentation failed! No ground points detected." << std::endl;
+        } 
         pub_cloud->publish(cloud2msg(curr_points));
         pub_ground->publish(cloud2msg(ground_points));
         pub_non_ground->publish(cloud2msg(non_ground_points));
+
     }
     
 
@@ -716,6 +725,18 @@ void set_posestamp(T &out) {
 
 void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped, std::unique_ptr<tf2_ros::TransformBroadcaster> & tf_br)
 {
+    // Check for NaN in pose
+    if (!std::isfinite(odomAftMapped.pose.pose.position.x) ||
+        !std::isfinite(odomAftMapped.pose.pose.position.y) ||
+        !std::isfinite(odomAftMapped.pose.pose.position.z) ||
+        !std::isfinite(odomAftMapped.pose.pose.orientation.x) ||
+        !std::isfinite(odomAftMapped.pose.pose.orientation.y) ||
+        !std::isfinite(odomAftMapped.pose.pose.orientation.z) ||
+        !std::isfinite(odomAftMapped.pose.pose.orientation.w)) {
+        std::cerr << "[ERROR] Odometry contains NaN! Skipping publish." << std::endl;
+        return;
+    }
+
     odomAftMapped.header.frame_id = "LiDAR";
     odomAftMapped.child_frame_id = "aft_mapped";
     odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
@@ -821,20 +842,41 @@ void saveTrajectory(const std::string &traj_file) {
 * @output : estimated height of LiDAR sensor
 */
 void get_quat_LiDAR_plane_to_gravity(Eigen::Quaterniond &lidar_q, V3D& normal_vector, double &lidar_estimate_height) {
-    
-    /** Normal vector estimation as a result of ground segmentation **/
+    if (ground_points.empty()) {
+        std::cerr << "[ERROR] Ground points are empty! Skipping rotation computation." << std::endl;
+        lidar_q = Eigen::Quaterniond::Identity();
+        lidar_estimate_height = 0.0;
+        normal_vector = V3D(0, 0, 1);
+        return;
+    }
+
     Eigen::Vector4f plane_parameters;
     float curvature;
     computePointNormal(ground_points, plane_parameters, curvature);
 
-    /** Roll, pitch, and yaw estimation with respect to the Earth's gravity direction vector using the ground plane normal vector **/
+    // Check for NaN in plane_parameters
+    if (!std::isfinite(plane_parameters[0]) || !std::isfinite(plane_parameters[1]) ||
+        !std::isfinite(plane_parameters[2]) || !std::isfinite(plane_parameters[3])) {
+        std::cerr << "[ERROR] Ground plane parameters contain NaN! Skipping rotation computation." << std::endl;
+        lidar_q = Eigen::Quaterniond::Identity();
+        lidar_estimate_height = 0.0;
+        normal_vector = V3D(0, 0, 1);
+        return;
+    }
+
     V3D normal_plane = {plane_parameters[0], plane_parameters[1], plane_parameters[2]};
     normal_plane.normalize();
 
-    V3D normal_gravity{0, 0, 1.0};
+    // Check for NaN after normalization
+    if (!normal_plane.allFinite()) {
+        std::cerr << "[ERROR] Normalized ground normal is NaN! Skipping rotation computation." << std::endl;
+        lidar_q = Eigen::Quaterniond::Identity();
+        lidar_estimate_height = 0.0;
+        normal_vector = V3D(0, 0, 1);
+        return;
+    }
 
-    // the built rotation represent a rotation sending the line of direction a to the line of direction b, both lines passing through the origin.
-    // (from world gravity frame to LiDAR plane frame)
+    V3D normal_gravity{0, 0, 1.0};
     lidar_q = Eigen::Quaterniond::FromTwoVectors(normal_gravity, normal_plane);
     lidar_estimate_height = plane_parameters[3];
     normal_vector = normal_plane;
@@ -1080,6 +1122,11 @@ private:
             }
 
             /** AHRS algorithm and estimate Rotation matrix (from earth to IMU & from earth to LiDAR plane) **/
+            if (Measures.imu.empty()) {
+                std::cerr << "No IMU data available." << std::endl;
+                return;
+            }
+
             auto v_imu = Measures.imu; 
             auto imu_timestamp = Measures.imu.front()->header.stamp;    // first imu ROS timestamp
             estimate_timestamp_ = get_time_sec(imu_timestamp);

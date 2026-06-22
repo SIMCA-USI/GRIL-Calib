@@ -53,7 +53,8 @@ def generate_launch_description():
                     'point_filter_num': point_filter_num_param,
                     'max_iteration': max_iteration_param,
                     'cube_side_length': cube_side_length_param}],
-        output='screen'
+        output='screen',
+        #prefix=['gdb -ex run --args']   # ← ADD THIS LINE FOR DEBUGGING
     )
     rviz_node = Node(
         package='rviz2',

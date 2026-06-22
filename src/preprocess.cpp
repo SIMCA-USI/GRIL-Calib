@@ -115,12 +115,14 @@ void Preprocess::process_cut_frame_livox(const livox_ros_driver2::msg::CustomMsg
 void
 Preprocess::process_cut_frame_pcl2(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out,
                                    deque<double> &time_lidar, const int required_frame_num, int scan_count) {
-    pl_surf.clear();
+
+                                    pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
 
     if (lidar_type == VELO) {
         pcl::PointCloud<velodyne_ros::Point> pl_orig;
+        
         pcl::fromROSMsg(*msg, pl_orig);
         int plsize = pl_orig.points.size();
         pl_surf.reserve(plsize);
@@ -266,6 +268,7 @@ Preprocess::process_cut_frame_pcl2(const sensor_msgs::msg::PointCloud2::UniquePt
     }
     
     else if (lidar_type == OUSTER) {
+
         pcl::PointCloud<ouster_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
         int plsize = pl_orig.points.size();
@@ -279,7 +282,7 @@ Preprocess::process_cut_frame_pcl2(const sensor_msgs::msg::PointCloud2::UniquePt
             if (i % point_filter_num != 0) continue;
 
             double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
-            
+
             if (range < blind) continue;
             
             Eigen::Vector3d pt_vec;

@@ -1,1 +1,0 @@
-LiDAR-IMU calibration result:

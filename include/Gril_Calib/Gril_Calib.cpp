@@ -1,5 +1,5 @@
 #include "Gril_Calib.h"
-
+#include <cfloat>
 /*
 Description: Gril-Calib (Heavily adapted from LI-Init by Fangcheng Zhu)
 Modifier : Taeyoung Kim (https://github.com/Taeyoung96)

@@ -18,7 +18,6 @@
 
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
-#include <ceres/local_parameterization.h>
 #include <ceres/covariance.h>
 
 #include <so3_math.h>

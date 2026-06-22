@@ -92,7 +92,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
     // use std::uint32_t to avoid conflicting with pcl::uint32_t
     (std::uint32_t, t, t)
     (std::uint16_t, reflectivity, reflectivity)
-    (std::uint8_t, ring, ring)
+    (std::uint16_t, ring, ring)
     (std::uint16_t, ambient, ambient)
     (std::uint32_t, range, range)
 )
