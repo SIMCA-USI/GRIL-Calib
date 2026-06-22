@@ -59,7 +59,7 @@
         # For LiDAR odometry Saving
         trajectory_save:
             traj_save_en: false
-            traj_file_path: "/home/pablo/ros2_ws/patata/traj.txt" # When you use docker, you should enter docker absolute path.
+            traj_file_path: "/home/pablo/ros2_ws/patata_traj.txt" # When you use docker, you should enter docker absolute path.
 
         # For use patchwork++, more info : https://github.com/url-kaist/patchwork-plusplus 
         patchworkpp:
