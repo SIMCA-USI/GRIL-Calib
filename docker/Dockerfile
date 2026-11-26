@@ -20,19 +20,6 @@ RUN mkdir build
 WORKDIR /root/thirdParty/ceres-solver-2.1.0/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j4 && make install
 
-# Install livox SDK
-WORKDIR /root/
-RUN git clone https://github.com/Livox-SDK/Livox-SDK2.git
-WORKDIR /root/Livox-SDK2
-RUN mkdir build
-WORKDIR /root/Livox-SDK2/build
-RUN cmake .. && make -j2 && make install
-
-# Install livox ros driver
-WORKDIR /root/ros2_livox_ws/src
-RUN git clone https://github.com/Livox-SDK/livox_ros_driver2.git
-WORKDIR /root/ros2_livox_ws/src/livox_ros_driver2
-
 
 WORKDIR /root/ros2_ws
 

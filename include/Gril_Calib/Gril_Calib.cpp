@@ -366,7 +366,7 @@ void Gril_Calib::solve_Rotation_only() {
     R_LI_quat[2] = 0;
     R_LI_quat[3] = 0;
 
-    ceres::LocalParameterization *quatParam = new ceres::QuaternionParameterization();
+    ceres::Manifold *quatParam = new ceres::QuaternionManifold();
     ceres::Problem problem_rot;
     problem_rot.AddParameterBlock(R_LI_quat, 4, quatParam);
 
@@ -421,7 +421,7 @@ void Gril_Calib::solve_Rot_Trans_calib(double &timediff_imu_wrt_lidar, const dou
 
     // Define problem
     ceres::Problem problem_Ex_calib;
-    ceres::LocalParameterization *quatParam = new ceres::QuaternionParameterization();
+    ceres::Manifold *quatParam = new ceres::QuaternionManifold();
     
     // Define Loss function
     ceres::LossFunction *loss_function_angular = new ceres::CauchyLoss(0.5);

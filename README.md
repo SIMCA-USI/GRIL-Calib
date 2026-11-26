@@ -19,7 +19,6 @@ If you want to use ROS2 version, check out `humble` branch.
 - ROS Melodic
 - PCL >= 1.8
 - Eigen >= 3.3.4
-- [livox_ros_driver](https://github.com/Livox-SDK/livox_ros_driver)
 - [ceres-solver-2.0.0](http://ceres-solver.org/installation.html#linux)
 
 ### Set up your environment easily with Docker!  🐳  
@@ -67,15 +66,6 @@ root@taeyoung-cilab:/root/catkin_ws#
 **3. Build and run GRIL-Calib**
 
 Inside the docker container, build and run the package.  
-```
-cd /root/ros2_livox_ws/src/livox_ros_driver2/
-```
-```
-./build.sh humble
-```
-```
-source /root/ros2_livox_ws/install/setup.bash 
-```
 ```
 cd /root/ros2_ws/
 ```

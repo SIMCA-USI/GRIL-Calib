@@ -48,7 +48,6 @@ find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(pcl_ros REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(livox_ros_driver2 REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 find_package(Eigen3 REQUIRED)
@@ -102,7 +101,6 @@ ament_target_dependencies(gril_calib_exec
   std_srvs
   visualization_msgs
   pcl_conversions
-  livox_ros_driver2
   tf2_ros
   Eigen3
   PCL
@@ -119,7 +117,8 @@ target_include_directories(gril_calib_exec PRIVATE
   ${PYTHON_INCLUDE_DIRS}
 )
 
-rosidl_target_interfaces(gril_calib_exec ${PROJECT_NAME} "rosidl_typesupport_cpp")
+rosidl_get_typesupport_target(cpp_typesupport_target "${PROJECT_NAME}" "rosidl_typesupport_cpp")
+target_link_libraries(gril_calib_exec "${cpp_typesupport_target}")
 
 # Install targets
 install(TARGETS gril_calib_exec

@@ -8,7 +8,7 @@ const bool time_list_cut_frame(PointType &x, PointType &y) {
 }
 
 Preprocess::Preprocess()
-        : feature_enabled(0), lidar_type(AVIA), blind(1.0), point_filter_num(1) {
+        : feature_enabled(0), lidar_type(OUSTER), blind(1.0), point_filter_num(1) {
     inf_bound = 10;
     N_SCANS = 6;
     group_size = 8;
@@ -42,75 +42,6 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num) {
     point_filter_num = pfilt_num;
 }
 
-void Preprocess::process(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg, PointCloudXYZI::Ptr &pcl_out) {
-    avia_handler(msg);
-    *pcl_out = pl_surf;
-}
-
-void Preprocess::process_cut_frame_livox(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg,
-                                         deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar,
-                                         const int required_frame_num, int scan_count) {
-    int plsize = msg->point_num;
-    pl_surf.clear();
-    pl_surf.reserve(plsize);
-    pl_full.clear();
-    pl_full.resize(plsize);
-    int valid_point_num = 0;
-
-    for (uint i = 1; i < plsize; i++) {
-        if ((msg->points[i].line < N_SCANS) &&
-        ((msg->points[i].tag & 0x30) == 0x10 || (msg->points[i].tag & 0x30) == 0x00))
-        {
-            valid_point_num++;
-            if (valid_point_num % point_filter_num == 0) {
-                pl_full[i].x = msg->points[i].x;
-                pl_full[i].y = msg->points[i].y;
-                pl_full[i].z = msg->points[i].z;
-                pl_full[i].intensity = msg->points[i].reflectivity;
-                //use curvature as time of each laser points，unit: ms
-                pl_full[i].curvature = msg->points[i].offset_time / float(1000000);
-
-                double dist = pl_full[i].x * pl_full[i].x + pl_full[i].y * pl_full[i].y + pl_full[i].z * pl_full[i].z;
-                if (dist < blind) continue;
-
-                if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7)
-                    || (abs(pl_full[i].y - pl_full[i - 1].y) > 1e-7)
-                    || (abs(pl_full[i].z - pl_full[i - 1].z) > 1e-7)) {
-                    pl_surf.push_back(pl_full[i]);
-                }
-            }
-        }
-    }
-    sort(pl_surf.points.begin(), pl_surf.points.end(), time_list_cut_frame);
-    //end time of last frame，单位ms
-    double last_frame_end_time = get_time_sec(msg->header.stamp) * 1000;
-    uint valid_num = 0;
-    uint cut_num = 0;
-    uint valid_pcl_size = pl_surf.points.size();
-
-    int required_cut_num = required_frame_num;
-    if (scan_count < 5)
-        required_cut_num = 1;
-
-    PointCloudXYZI pcl_cut;
-    for (uint i = 1; i < valid_pcl_size; i++) {
-        valid_num++;
-        //Compute new opffset time of each point：ms
-        pl_surf[i].curvature += get_time_sec(msg->header.stamp) * 1000 - last_frame_end_time;
-        pcl_cut.push_back(pl_surf[i]);
-        if (valid_num == (int((cut_num + 1) * valid_pcl_size / required_cut_num) - 1)) {
-            cut_num++;
-            time_lidar.push_back(last_frame_end_time);
-            PointCloudXYZI::Ptr pcl_temp(new PointCloudXYZI()); //Initialize shared_ptr
-            *pcl_temp = pcl_cut;
-            pcl_out.push_back(pcl_temp);
-            //Update frame head
-            last_frame_end_time += pl_surf[i].curvature;
-            pcl_cut.clear();
-            pcl_cut.reserve(valid_pcl_size * 2 / required_frame_num);
-        }
-    }
-}
 #define MAX_LINE_NUM 128
 void
 Preprocess::process_cut_frame_pcl2(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out,
@@ -283,7 +214,7 @@ Preprocess::process_cut_frame_pcl2(const sensor_msgs::msg::PointCloud2::UniquePt
 
             double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
 
-            if (range < blind) continue;
+            if (!std::isfinite(range) || range < blind * blind) continue;
             
             Eigen::Vector3d pt_vec;
             PointType added_pt;
@@ -366,96 +297,6 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, Po
     *pcl_out = pl_surf;
 }
 
-void Preprocess::avia_handler(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg) {
-    pl_surf.clear();
-    pl_corn.clear();
-    pl_full.clear();
-    double t1 = omp_get_wtime();
-    int plsize = msg->point_num;
-
-    pl_corn.reserve(plsize);
-    pl_surf.reserve(plsize);
-    pl_full.resize(plsize);
-
-    for (int i = 0; i < N_SCANS; i++) {
-        pl_buff[i].clear();
-        pl_buff[i].reserve(plsize);
-    }
-    uint valid_num = 0;
-
-    if (feature_enabled) {
-        for (uint i = 1; i < plsize; i++) {
-            if ((msg->points[i].line < N_SCANS) && ((msg->points[i].tag & 0x30) == 0x10) ||
-                ((msg->points[i].tag & 0x30) == 0x00)) {
-                pl_full[i].x = msg->points[i].x;
-                pl_full[i].y = msg->points[i].y;
-                pl_full[i].z = msg->points[i].z;
-                pl_full[i].intensity = msg->points[i].reflectivity;
-                pl_full[i].curvature =
-                        msg->points[i].offset_time / float(1000000); //use curvature as time of each laser points
-                double dist = pl_full[i].x * pl_full[i].x + pl_full[i].y * pl_full[i].y + pl_full[i].z * pl_full[i].z;
-                if (dist < blind) continue;
-
-                if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7)
-                    || (abs(pl_full[i].y - pl_full[i - 1].y) > 1e-7)
-                    || (abs(pl_full[i].z - pl_full[i - 1].z) > 1e-7)) {
-                    pl_buff[msg->points[i].line].push_back(pl_full[i]);
-                }
-            }
-        }
-        static int count = 0;
-        static double time = 0.0;
-        count++;
-        double t0 = omp_get_wtime();
-        for (int j = 0; j < N_SCANS; j++) {
-            if (pl_buff[j].size() <= 5) continue;
-            pcl::PointCloud<PointType> &pl = pl_buff[j];
-            plsize = pl.size();
-            vector<orgtype> &types = typess[j];
-            types.clear();
-            types.resize(plsize);
-            plsize--;
-            for (uint i = 0; i < plsize; i++) {
-                types[i].range = pl[i].x * pl[i].x + pl[i].y * pl[i].y;
-                vx = pl[i].x - pl[i + 1].x;
-                vy = pl[i].y - pl[i + 1].y;
-                vz = pl[i].z - pl[i + 1].z;
-                types[i].dista = vx * vx + vy * vy + vz * vz;
-            }
-            types[plsize].range = pl[plsize].x * pl[plsize].x + pl[plsize].y * pl[plsize].y;
-            give_feature(pl, types);
-            // pl_surf += pl;
-        }
-        time += omp_get_wtime() - t0;
-        printf("Feature extraction time: %lf \n", time / count);
-    } else {
-        for (uint i = 1; i < plsize; i++) {
-            if ((msg->points[i].line < N_SCANS) && ((msg->points[i].tag & 0x30) == 0x10 ||
-                (msg->points[i].tag & 0x30) == 0x00)) {
-                valid_num++;
-                if (valid_num % point_filter_num == 0) {
-                    pl_full[i].x = msg->points[i].x;
-                    pl_full[i].y = msg->points[i].y;
-                    pl_full[i].z = msg->points[i].z;
-                    pl_full[i].intensity = msg->points[i].reflectivity;
-                    pl_full[i].curvature =
-                            msg->points[i].offset_time / float(1000000); //use curvature as time of each laser points
-
-                    double dist =
-                            pl_full[i].x * pl_full[i].x + pl_full[i].y * pl_full[i].y + pl_full[i].z * pl_full[i].z;
-                    if (dist < blind) continue;
-
-                    if ((abs(pl_full[i].x - pl_full[i - 1].x) > 1e-7)
-                        || (abs(pl_full[i].y - pl_full[i - 1].y) > 1e-7)
-                        || (abs(pl_full[i].z - pl_full[i - 1].z) > 1e-7)) {
-                        pl_surf.push_back(pl_full[i]);
-                    }
-                }
-            }
-        }
-    }
-}
-
 void Preprocess::l515_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
@@ -506,7 +347,7 @@ void Preprocess::oust_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &ms
         for (uint i = 0; i < plsize; i++) {
             double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y +
                            pl_orig.points[i].z * pl_orig.points[i].z;
-            if (range < blind) continue;
+            if (!std::isfinite(range) || range < blind * blind) continue;
             Eigen::Vector3d pt_vec;
             PointType added_pt;
             added_pt.x = pl_orig.points[i].x;
@@ -552,7 +393,7 @@ void Preprocess::oust_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &ms
             double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y +
                            pl_orig.points[i].z * pl_orig.points[i].z;
 
-            if (range < blind) continue;
+            if (!std::isfinite(range) || range < blind * blind) continue;
 
             Eigen::Vector3d pt_vec;
             PointType added_pt;
@@ -1077,15 +918,6 @@ void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &t
     }
 }
 
-// void Preprocess::pub_func(PointCloudXYZI &pl, const ros::Time &ct) {
-//     pl.height = 1;
-//     pl.width = pl.size();
-//     sensor_msgs::msg::PointCloud2 output;
-//     pcl::toROSMsg(pl, output);
-//     output.header.frame_id = "livox";
-//     output.header.stamp = ct;
-// }
-
 int Preprocess::plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i_cur, uint &i_nex,
                             Eigen::Vector3d &curr_direct) {
     double group_dis = disA * types[i_cur].range + disB;
@@ -1162,20 +994,10 @@ int Preprocess::plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, ui
         return 0;
     }
 
-    if (lidar_type == AVIA) {
-        double dismax_mid = disarr[0] / disarr[disarrsize / 2];
-        double dismid_min = disarr[disarrsize / 2] / disarr[disarrsize - 2];
-
-        if (dismax_mid >= limit_maxmid || dismid_min >= limit_midmin) {
-            curr_direct.setZero();
-            return 0;
-        }
-    } else {
-        double dismax_min = disarr[0] / disarr[disarrsize - 2];
-        if (dismax_min >= limit_maxmin) {
-            curr_direct.setZero();
-            return 0;
-        }
+    double dismax_min = disarr[0] / disarr[disarrsize - 2];
+    if (dismax_min >= limit_maxmin) {
+        curr_direct.setZero();
+        return 0;
     }
 
     curr_direct << vx, vy, vz;

@@ -108,6 +108,7 @@ ImuProcess::ImuProcess()
   mean_acc        = V3D(0, 0, -1.0);
   mean_gyr        = V3D(0, 0, 0);
   angvel_last     = Zero3d;
+  time_last_scan  = 0.0;
   last_imu_.reset(new sensor_msgs::msg::Imu());
   fout_imu.open(DEBUG_FILE_DIR("imu.txt"),ios::out);
 }
@@ -223,9 +224,11 @@ void ImuProcess::Forward_propagation_without_imu(const MeasureGroup &meas, State
     if (b_first_frame_) {
         dt = 0.1;
         b_first_frame_ = false;
+        time_last_scan = pcl_beg_time;
     } else {
         dt = pcl_beg_time - time_last_scan;
         time_last_scan = pcl_beg_time;
+        if (dt <= 0.0 || dt > 1.0) dt = 0.1;
     }
 
     /* covariance propagation */

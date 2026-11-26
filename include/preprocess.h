@@ -6,7 +6,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include "livox_ros_driver2/msg/custom_msg.hpp"
 
 using namespace std;
 
@@ -78,7 +77,7 @@ namespace ouster_ros {
       float intensity;
       uint32_t t;
       uint16_t reflectivity;
-      uint8_t  ring;
+      uint16_t ring;
       uint16_t ambient;
       uint32_t range;
       EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -124,8 +123,6 @@ class Preprocess
   Preprocess();
   ~Preprocess();
   
-  void process(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg, PointCloudXYZI::Ptr &pcl_out);
-  void process_cut_frame_livox(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar, const int required_frame_num, int scan_count);
   void process(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process_cut_frame_pcl2(const sensor_msgs::msg::PointCloud2::UniquePtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar, const int required_frame_num, int scan_count);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
@@ -141,7 +138,6 @@ class Preprocess
     
 
   private:
-  void avia_handler(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg);
   void oust_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
   void velodyne_handler(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);
   void velodyne_handler_kitti(const sensor_msgs::msg::PointCloud2::UniquePtr &msg);

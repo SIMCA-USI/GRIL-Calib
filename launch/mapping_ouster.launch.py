@@ -14,8 +14,8 @@ def generate_launch_description():
     package_path = get_package_share_directory('gril_calib')
 
     # Create LaunchConfigurations for the parameters with default values (not in config file)
-    point_filter_num_param = LaunchConfiguration('point_filter_num', default='4')                 # int
-    max_iteration_param = LaunchConfiguration('max_iteration', default='3')                       # int
+    point_filter_num_param = LaunchConfiguration('point_filter_num', default='2')                 # int
+    max_iteration_param = LaunchConfiguration('max_iteration', default='4')                       # int
     cube_side_length_param = LaunchConfiguration('cube_side_length', default='1000.0')            # double
 
     default_config_path = os.path.join(package_path, 'config', 'ouster.yaml')
@@ -60,6 +60,7 @@ def generate_launch_description():
         package='rviz2',
         executable='rviz2',
         arguments=['-d', rviz_cfg],
+        parameters=[{'use_sim_time': use_sim_time}],
         condition=IfCondition(rviz_use)
     )
 

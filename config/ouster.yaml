@@ -1,4 +1,4 @@
-/**:
+/**: # Si no va mirar otro como https://github.com/APRIL-ZJU/learn-to-calibrate
     ros__parameters:
         common:
             lid_topic:  "/ouster/points"
@@ -7,16 +7,16 @@
         preprocess:
             lidar_type: 3                # Velodyne LiDAR 2 # Ouster 3
             scan_line: 128 #32                # LiDAR scan line number
-            blind: 0.5                     # blind area in the beginning of each scan line   
+            blind: 1.6                     # blind area in the beginning of each scan line   
             feature_extract_en: false
 
         calibration:
-            cut_frame: true              # false: do not cut input pointcloud
-            cut_frame_num: 3             # must be positive integer
-            orig_odom_freq: 20 #10           # original Lidar frequency (for velodyne, it is 10Hz)
+            cut_frame: false             # false: do not cut input pointcloud
+            cut_frame_num: 1             # must be positive integer (keep 1 when cut_frame is false)
+            orig_odom_freq: 10 #10           # original Lidar frequency (for velodyne, it is 10Hz)
             mean_acc_norm: 9.81          # 1: for livox built-in IMU
 
-            imu_sensor_height : 2.0     # Height from ground to IMU sensor (meter)
+            imu_sensor_height : 1.34     # Height from ground to IMU sensor (meter)
             verbose : true                # For debug, Rotation matrix related ground, lidar sensor height
 
             # For Data Accumulation
@@ -37,15 +37,15 @@
             ground_factor : 5.0
 
         mapping:
-            filter_size_surf: 0.5 
-            filter_size_map: 0.5 
-            gyr_cov: 0.5 
-            acc_cov: 0.5 
-            det_range: 200.0              # LiDAR range
+            filter_size_surf: 0.3 
+            filter_size_map: 0.3 
+            gyr_cov: 2.0 
+            acc_cov: 2.0 
+            det_range: 100.0              # LiDAR range
             ground_cov : 500.0
 
         publish:
-            path_en:  false                # true: output the path of the robot
+            path_en:  true                 # true: output the path of the robot
             scan_publish_en: false         # false: close all the point cloud output
             dense_publish_en: false       # false: low down the points number in a global-frame point clouds scan.
             scan_bodyframe_pub_en: false   # true: output the point cloud scans in IMU-body-frame
@@ -63,7 +63,7 @@
 
         # For use patchwork++, more info : https://github.com/url-kaist/patchwork-plusplus 
         patchworkpp:
-            sensor_height: 2.04 #1.52        # For M2DGR dataset : https://github.com/SJTU-ViSYS/M2DGR
+            sensor_height: 1.5 #1.52        # For M2DGR dataset : https://github.com/SJTU-ViSYS/M2DGR
 
             mode: "czm" 
             verbose: false   # To check effect of uprightness/elevation/flatness

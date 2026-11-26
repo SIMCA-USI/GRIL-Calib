@@ -49,7 +49,6 @@
 #include <tf2/transform_datatypes.h>
 #include <tf2_ros/transform_broadcaster.h>
 
-#include "livox_ros_driver2/msg/custom_msg.hpp"
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
 #include <Gril_Calib/Gril_Calib.h>
@@ -385,46 +384,6 @@ void lasermap_fov_segment() {
 double timediff_imu_wrt_lidar = 0.0;
 bool timediff_set_flg = false;
 
-// ** livox LiDAR callback ** // 
-void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::UniquePtr &msg) {
-    mtx_buffer.lock();
-    double preprocess_start_time = omp_get_wtime();
-    double cur_time = get_time_sec(msg->header.stamp);
-    scan_count++;
-    if (cur_time < last_timestamp_lidar) {
-        std::cerr << "lidar loop back, clear buffer" << std::endl;
-        lidar_buffer.clear();
-        time_buffer.clear();
-    }
-    last_timestamp_lidar = cur_time;
-
-    if (abs(last_timestamp_imu - last_timestamp_lidar) > 1.0 && !timediff_set_flg && !imu_buffer.empty()) {
-        timediff_set_flg = true;
-        timediff_imu_wrt_lidar = last_timestamp_imu - last_timestamp_lidar;
-        printf("Self sync IMU and LiDAR, HARD time lag is %.10lf \n \n", timediff_imu_wrt_lidar);
-    }
-
-    if (cut_frame) {
-        deque<PointCloudXYZI::Ptr> ptr;
-        deque<double> timestamp_lidar;
-        p_pre->process_cut_frame_livox(msg, ptr, timestamp_lidar, cut_frame_num, scan_count);
-
-        while (!ptr.empty() && !timestamp_lidar.empty()) {
-            lidar_buffer.push_back(ptr.front());
-            ptr.pop_front();
-            time_buffer.push_back(timestamp_lidar.front() / double(1000));//unit:s
-            timestamp_lidar.pop_front();
-        }
-    } else {
-        PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
-        p_pre->process(msg, ptr);
-        lidar_buffer.push_back(ptr);
-        time_buffer.push_back(last_timestamp_lidar);
-    }
-    mtx_buffer.unlock();
-    sig_buffer.notify_all();
-}
-
 // ** mechnical LiDAR point cloud callback ** //
 void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::UniquePtr &msg) {
     mtx_buffer.lock();
@@ -725,6 +684,11 @@ void set_posestamp(T &out) {
 
 void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped, std::unique_ptr<tf2_ros::TransformBroadcaster> & tf_br)
 {
+    odomAftMapped.header.frame_id = "LiDAR";
+    odomAftMapped.child_frame_id = "aft_mapped";
+    odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+    set_posestamp(odomAftMapped.pose);
+
     // Check for NaN in pose
     if (!std::isfinite(odomAftMapped.pose.pose.position.x) ||
         !std::isfinite(odomAftMapped.pose.pose.position.y) ||
@@ -737,13 +701,10 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
         return;
     }
 
-    odomAftMapped.header.frame_id = "LiDAR";
-    odomAftMapped.child_frame_id = "aft_mapped";
-    odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
-    set_posestamp(odomAftMapped.pose);
     pubOdomAftMapped->publish(odomAftMapped);
     
     geometry_msgs::msg::TransformStamped trans;
+    trans.header.stamp = odomAftMapped.header.stamp;
     trans.header.frame_id = "LiDAR";
     trans.child_frame_id = "aft_mapped";
     trans.transform.translation.x = odomAftMapped.pose.pose.position.x;
@@ -1059,15 +1020,8 @@ public:
             cout << "~~~~" << ROOT_DIR << " doesn't exist" << endl;
 
         /*** ROS subscribe initialization ***/
-        if (p_pre->lidar_type == AVIA)
-        {
-            sub_pcl_livox_ = this->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, 20, livox_pcl_cbk);
-        }
-        else
-        {
-            sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, 20, standard_pcl_cbk);
-        }
-        sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 10, imu_cbk);
+        sub_pcl_pc_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, 20, standard_pcl_cbk);
+        sub_imu_ = this->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 2000, imu_cbk);
 
         /*** ROS publish initialization ***/
         pubLaserCloudFull_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 20);
@@ -1123,7 +1077,11 @@ private:
 
             /** AHRS algorithm and estimate Rotation matrix (from earth to IMU & from earth to LiDAR plane) **/
             if (Measures.imu.empty()) {
-                std::cerr << "No IMU data available." << std::endl;
+                std::cerr << std::fixed << std::setprecision(6)
+                          << "No IMU data available. (lidar_beg=" << Measures.lidar_beg_time
+                          << ", lidar_end=" << lidar_end_time
+                          << ", imu_front=" << (imu_buffer.empty() ? -1.0 : get_time_sec(imu_buffer.front()->header.stamp))
+                          << ", last_imu=" << last_timestamp_imu << ")" << std::endl;
                 return;
             }
 
@@ -1529,6 +1487,27 @@ private:
                     rclcpp::shutdown();
                 }
             }
+
+            if (Calib_LI->verbose && orig_odom_freq > 0 && frame_num % orig_odom_freq == 0) {
+                int vert_feat = 0;
+                double vert_r_sum = 0.0;
+                for (int i = 0; i < effect_feat_num; i++) {
+                    if (fabs(corr_normvect->points[i].z) < 0.7) {
+                        vert_feat++;
+                        const auto &p = laserCloudOri->points[i];
+                        vert_r_sum += sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+                    }
+                }
+                double vert_avg_r = vert_feat > 0 ? vert_r_sum / vert_feat : 0.0;
+                cout << fixed << setprecision(3)
+                     << "[Odom] feats_down=" << feats_down_size
+                     << " effect_feat=" << effect_feat_num
+                     << " vert_feat=" << vert_feat
+                     << " (avg_r=" << vert_avg_r << "m)"
+                     << " pos=(" << state.pos_end.x() << ", " << state.pos_end.y() << ", " << state.pos_end.z() << ")"
+                     << " rpy=(" << euler_cur.x() * 57.3 << ", " << euler_cur.y() * 57.3 << ", " << euler_cur.z() * 57.3 << ") deg"
+                     << endl;
+            }
         }
     }
 
@@ -1540,7 +1519,6 @@ private:
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl_pc_;
-    rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_pcl_livox_;
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     rclcpp::TimerBase::SharedPtr timer_;

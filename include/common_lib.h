@@ -57,7 +57,7 @@ typedef Matrix2d M2D;
 const M3D Eye3d(M3D::Identity());
 const V3D Zero3d(0, 0, 0);
 
-enum LID_TYPE{AVIA = 1, VELO, OUSTER, L515, PANDAR, VELO_NCLT, VELO_without_Time}; //{1, 2, 3}
+enum LID_TYPE{VELO = 2, OUSTER, L515, PANDAR, VELO_NCLT, VELO_without_Time}; //{2: VELO, 3: OUSTER}
 struct MeasureGroup     // Lidar data and imu dates for the curent process
 {
     MeasureGroup()
